@@ -1,4 +1,6 @@
 (ns puppetlabs.missing-objects-as-a-service-web-service
+  (:import
+    (org.eclipse.jgit.http.server GitServlet))
   (:require [clojure.tools.logging :as log]
             [puppetlabs.comidi :as comidi]
             [puppetlabs.missing-objects-as-a-service-web-core :as core]
@@ -7,17 +9,11 @@
 
 (trapperkeeper/defservice hello-web-service
   [[:ConfigService get-in-config]
-   [:WebroutingService add-ring-handler get-route]
+   [:WebserverService add-servlet-handler]
    HelloService]
   (init [this context]
     (log/info "Initializing hello webservice")
-    (let [url-prefix (get-route this)]
-      (add-ring-handler
-        this
-        (comidi/routes->handler
-         (comidi/context url-prefix
-                         (core/app (tk-services/get-service this :HelloService)))))
-      (assoc context :url-prefix url-prefix)))
+    (add-servlet-handler this (GitServlet.) "our-git-repo"))
 
   (start [this context]
          (let [host (get-in-config [:webserver :host])
