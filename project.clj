@@ -17,7 +17,9 @@
                  [puppetlabs/http-client "0.5.0"]
                  [puppetlabs/comidi "0.3.1"]
                  [org.eclipse.jgit/org.eclipse.jgit.http.server ~jgit-version]
-                 [org.eclipse.jgit/org.eclipse.jgit.http.apache ~jgit-version]]
+                 [org.eclipse.jgit/org.eclipse.jgit.http.apache ~jgit-version]
+                 [prismatic/schema "1.0.5"]
+                 [puppetlabs/pe-file-sync "0.1.7"]]
 
   :profiles {:dev {:source-paths ["dev"]
                    :dependencies [[puppetlabs/trapperkeeper ~tk-version :classifier "test" :scope "test"]
