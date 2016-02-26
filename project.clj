@@ -28,6 +28,9 @@
                                   [org.clojure/tools.namespace "0.2.4"]
                                   [ring-mock "0.1.5"]]}}
 
+  :repositories [["releases" "http://nexus.delivery.puppetlabs.net/content/repositories/releases/"]
+                 ["snapshots" "http://nexus.delivery.puppetlabs.net/content/repositories/snapshots/"]]
+
   :repl-options {:init-ns user}
 
   :aliases {"tk" ["trampoline" "run" "--config" "dev-resources/config.conf"]}
