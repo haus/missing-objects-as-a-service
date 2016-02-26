@@ -5,6 +5,9 @@
         </encoder>
     </appender>
 
+    <logger name="org.eclipse.jgit.internal.storage.file.RefDirectory" level="debug"/>
+    <logger name="org.eclipse.jgit.internal.storage.file.ObjectDirectory" level="debug"/>
+
     <root level="error">
         <appender-ref ref="STDOUT" />
     </root>
