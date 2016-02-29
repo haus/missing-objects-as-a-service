@@ -20,7 +20,7 @@
           (fs/touch (str (core/bare-repo-path base-path :our-repo) "/" "fooo"))
           (core/commit-repo :our-repo base-path {:msg "this is amaaaaazing" :committer (core/identity->person-ident {:name "justin" :email "foo.bar"})})
           (add-servlet-handler (GitServlet.) "/our-git-repo"
-                               {:servlet-init-params {"base-path" base-path "export-all" "true"}}))
+                               {:servlet-init-params {"base-path" base-path "export-all" "1"}}))
         context)
 
   (start [this context]
