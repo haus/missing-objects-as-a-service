@@ -19,3 +19,4 @@ checkouts
 /junit/
 /acceptance/hosts.cfg
 base-path
+foo
