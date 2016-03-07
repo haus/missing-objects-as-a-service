@@ -12,6 +12,7 @@
                  [org.clojure/tools.logging "0.3.1"]
                  [puppetlabs/trapperkeeper ~tk-version]
                  [puppetlabs/trapperkeeper-webserver-jetty9 ~tk-jetty9-version]
+                 [puppetlabs/trapperkeeper-scheduler "0.0.1"]
                  [puppetlabs/ring-middleware "0.2.0"]
                  [ring/ring-core "1.4.0" :exclusions [org.clojure/clojure]]
                  [puppetlabs/http-client "0.5.0"]
