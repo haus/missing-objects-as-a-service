@@ -1,41 +1,36 @@
 (ns puppetlabs.missing-objects-as-a-service-client
-  (:require [puppetlabs.enterprise.jgit-utils :as jgit]
-            [clojure.java.io :as io])
-  (:import
-            (org.eclipse.jgit.errors MissingObjectException)))
+  (:require [clojure.tools.logging :as log]
+            [puppetlabs.missing-objects-as-a-service-client-core :as core]
+            [puppetlabs.missing-objects-as-a-service-common :as common]
+            [puppetlabs.trapperkeeper.core :as trapperkeeper]))
 
-(def synced-commit-branch-name "synced-commit")
+(defprotocol JGitClient)
 
-(defn non-empty-dir?
-  "Returns true if path exists, is a directory, and contains at least 1 file."
-  [path]
-  (-> path
-    io/as-file
-    .listFiles
-    count
-    (> 0)))
-
-(defn fetch-if-necessary!
-  [repo-id repo-path latest-commit-id target-dir]
-  (with-open [repo (jgit/get-repository-from-git-dir target-dir)]
-    (jgit/validate-repo-exists! repo)
-    (when-not (= latest-commit-id (jgit/master-rev-id repo))
-      (try
-        (jgit/fetch repo)))))
-
-(defn apply-updates-to-repo
-  [repo-id server-repo-url latest-commit-id repo-path bare?]
-  (let [fetch? (non-empty-dir? repo-path)
-        clone? (not fetch?)]
-    (try
-      (if clone?
-        (jgit/clone! server-repo-url repo-path bare?)
-        (fetch-if-necessary! repo-id repo-path latest-commit-id))
-      (with-open [repo ( jgit/get-repository-from-git-dir repo-path)]
-        (if latest-commit-id
-          (let [initial-commit-id (jgit/rev-commit-id repo synced-commit-branch-name)]
-            (try
-              (jgit/update-ref repo synced-commit-branch-name latest-commit-id)
-              ; see pe-file-sync.client-core:429
-              (catch MissingObjectException e))))))))
-
+(trapperkeeper/defservice
+  jgit-client
+  JGitClient
+  [[:ShutdownService request-shutdown]]
+  (init [this context]
+        (log/info "Initializing hello service")
+        context
+        #_(let
+            [scheduled-jobs-completed? (promise)
+             context* (assoc context
+                        :sync-agent (common/create-agent
+                                      request-shutdown scheduled-jobs-completed?))]
+            context*))
+  (start [this context]
+         (log/info "Starting jgit client service")
+         context
+         #_(let [config (get-in-config [:file-sync])
+                 client-config (:client config)
+                 poll-interval (:poll-interval client-config)
+                 schedule-fn (partial after poll-interval)]
+             (when (< 0 poll-interval)
+               (core/start-periodic-sync-process!
+                 schedule-fn config context))
+             (assoc context :config config
+                            :started? true)))
+  (stop [this context]
+        (log/info "Shutting down jgit client service")
+        context))

@@ -9,7 +9,8 @@
             [puppetlabs.enterprise.jgit-utils :as jgit-utils])
   (:import (org.eclipse.jgit.api InitCommand Git)
            (java.io File)
-           (org.eclipse.jgit.lib PersonIdent)))
+           (org.eclipse.jgit.lib PersonIdent)
+           (clojure.lang IFn)))
 
 (def Identity
   "Schema for an author/committer."
@@ -44,8 +45,8 @@
              "Given a path to a data-dir (either client or storage service) and a repo-name,
              returns the path on disk to the bare Git repository with the given name."
              [data-dir :- schema/Str
-              repo-id :- schema/Keyword]
-             (fs/file data-dir (str (name repo-id) ".git")))
+              repo-id :- schema/Str]
+             (fs/file data-dir (str repo-id ".git")))
 
 (defn initialize-repos!
              "Initialize the repositories managed by this service.  For each repository ...
@@ -54,10 +55,10 @@
                * If staging-dir does not exist, it will be created.
                * If there is not an existing Git repo under data-dir,
                  'git init' will be used to create one."
-  [repo-id data-dir]
-  (log/infof "Initializing git data dir: %s" data-dir)
-  (initialize-data-dir! (fs/file data-dir))
-  (let [git-dir (bare-repo-path data-dir repo-id)]
+  [{:keys [repo-id base-dir]}]
+  (log/infof "Initializing git data dir: %s for repo %s" base-dir repo-id)
+  (initialize-data-dir! (fs/file base-dir))
+  (let [git-dir (bare-repo-path base-dir repo-id)]
     (log/infof "Initializing Git repository at %s" git-dir)
     (initialize-bare-repo! git-dir)))
 
@@ -70,12 +71,52 @@
   (PersonIdent. name email))
 
 (schema/defn commit-repo
-  [repo-id :- schema/Keyword
-   data-dir :- schema/Str
-   commit-info :- {:msg schema/Str :committer PersonIdent}]
-  (let [git-dir (bare-repo-path data-dir repo-id)
-        {:keys [msg committer]} commit-info]
-    (log/infof "Committing all files in '%s' to repo '%s'" git-dir repo-id)
-    (with-open [git-repo (get-repo git-dir)]
-      (let [git (Git/wrap git-repo)]
-        (jgit-utils/add-and-commit git msg committer)))))
+  ([{:keys [repo-id base-dir]}]
+    (commit-repo repo-id base-dir
+                 {:msg "this is amaaaaazing" :committer (identity->person-ident {:name "justin" :email "foo.bar"})}))
+  ([repo-id :- schema/Str
+    base-dir :- schema/Str
+    commit-info :- {:msg schema/Str :committer PersonIdent}]
+    (let [git-dir (bare-repo-path base-dir repo-id)
+          {:keys [msg committer]} commit-info]
+      (log/infof "Committing all files in '%s' to repo '%s'" git-dir repo-id)
+      (with-open [git-repo (get-repo git-dir)]
+        (let [git (Git/wrap git-repo)]
+          (jgit-utils/add-and-commit git msg committer))))))
+
+(defn commit-on-agent
+  [agent-state config context]
+  (commit-repo config)
+  {})
+
+(schema/defn ^:always-validate start-periodic-commit-process!
+  "Synchronizes the repositories specified in 'config' by sending the agent an
+  action.  It is important that this function only be called once, during service
+  startup.  (Although, note that one-off sync runs can be triggered by sending
+  the agent a 'sync-on-agent' action.)
+
+  'schedule-fn' is the function that will be invoked after each iteration of the
+  sync process to schedule the next iteration."
+  [schedule-fn :- IFn
+   config
+   context]
+  (let [commit-agent (:commit-agent context)
+        periodic-commit (fn [& args]
+                        (-> (apply commit-on-agent args)
+                            (assoc :schedule-next-run? true)))
+        send-to-agent #(send-off commit-agent periodic-commit config context)]
+
+    (add-watch commit-agent
+               ::schedule-watch
+               (fn [key* ref* old-state new-state]
+                 (when (:schedule-next-run? new-state)
+                   (let [{:keys [shutdown-requested? scheduled-jobs-completed? jobs-scheduled?]}
+                         (:scheduled-jobs-state context)]
+                     (if @shutdown-requested?
+                       (deliver scheduled-jobs-completed? true)
+                       (do
+                         (log/trace "Scheduling the next iteration of the commit process.")
+                         (reset! jobs-scheduled? true)
+                         (schedule-fn send-to-agent)))))))
+    ; The watch is in place, now send the initial action.
+    (send-to-agent)))

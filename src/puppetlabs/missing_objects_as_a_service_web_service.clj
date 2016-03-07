@@ -6,26 +6,49 @@
             [puppetlabs.missing-objects-as-a-service-web-core :as core]
             [puppetlabs.trapperkeeper.core :as trapperkeeper]
             [puppetlabs.trapperkeeper.services :as tk-services]
-            [me.raynes.fs :as fs]))
+            [me.raynes.fs :as fs]
+            [puppetlabs.missing-objects-as-a-service-common :as common]))
 
-(trapperkeeper/defservice hello-web-service
+(trapperkeeper/defservice
+  jgit-web-service
   [[:ConfigService get-in-config]
    [:WebserverService add-servlet-handler]
+   [:SchedulerService after stop-job]
+   [:ShutdownService request-shutdown]
    HelloService]
   (init [this context]
-    (log/info "Initializing hello webservice")
-        (let [base-path "base-path"]
+        (log/info "Initializing jgit servlet")
+        (let [base-path (get-in-config [:jgit-service :base-dir])
+              repo-id (get-in-config [:jgit-service :repo-id])
+              repo-mount (get-in-config [:jgit-service :repo-mount])
+              jgit-config (get-in-config [:jgit-service])
+              scheduled-jobs-completed? (promise)
+              context* (assoc context
+                         :scheduled-jobs-state {:shutdown-requested? (atom false)
+                                                :jobs-scheduled? (atom false)
+                                                :scheduled-jobs-completed? scheduled-jobs-completed?}
+                         :commit-agent (common/create-agent
+                                         request-shutdown scheduled-jobs-completed?))]
           (fs/mkdir base-path)
-          (core/initialize-repos! :our-repo base-path)
-          (fs/touch (str (core/bare-repo-path base-path :our-repo) "/" "fooo"))
-          (core/commit-repo :our-repo base-path {:msg "this is amaaaaazing" :committer (core/identity->person-ident {:name "justin" :email "foo.bar"})})
-          (add-servlet-handler (GitServlet.) "/our-git-repo"
-                               {:servlet-init-params {"base-path" base-path "export-all" "1"}}))
-        context)
+          (core/initialize-repos! jgit-config)
+          (fs/touch (str (core/bare-repo-path base-path repo-id) "/" "fooo"))
+          (core/commit-repo jgit-config)
+          (add-servlet-handler (GitServlet.) repo-mount
+                               {:servlet-init-params {"base-path" base-path "export-all" "1"}})
+          context*))
 
   (start [this context]
          (let [host (get-in-config [:webserver :host])
-               port (get-in-config [:webserver :port])]
-              (log/infof "Hello web service started; visit http://%s:%s/world to check it out!"
-                         host port))
-         context))
+               port (get-in-config [:webserver :port])
+               jgit-config (get-in-config [:jgit-service])
+               repo-id (get-in-config [:jgit-service :repo-id])
+               repo-mount (get-in-config [:jgit-service :repo-mount])
+               commit-interval (get-in-config [:jgit-service :commit-interval] 5000)
+               schedule-fn (partial after commit-interval)]
+           (log/infof "JGit servlet started; `git clone http://%s:%s%s/%s.git` to check it out!"
+                      host port repo-mount repo-id)
+           (core/start-periodic-commit-process! schedule-fn jgit-config context)
+           (log/infof "Commit agent started...")
+
+
+           context)))
