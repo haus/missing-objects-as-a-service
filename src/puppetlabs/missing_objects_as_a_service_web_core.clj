@@ -10,7 +10,7 @@
   (:import (org.eclipse.jgit.api InitCommand Git)
            (java.io File)
            (org.eclipse.jgit.lib PersonIdent)
-           (clojure.lang IFn)))
+           (clojure.lang IFn IDeref Atom)))
 
 (def Identity
   "Schema for an author/committer."
@@ -84,10 +84,24 @@
         (let [git (Git/wrap git-repo)]
           (jgit-utils/add-and-commit git msg committer))))))
 
+(schema/defn latest-commit-data
+  "Returns information about the latest commit on the master branch of the
+   repository specified by git-dir and staging-dir.  If a repository does
+   not exist at the specified paths, an error is returned.  If no commits have
+   been made on the repository, the return value will be {:commit nil}."
+  [{:keys [repo-id base-dir]}]
+  (let [git-dir (bare-repo-path base-dir repo-id)]
+    (with-open [repo (get-repo git-dir)]
+      (let [latest-commit (when-let [ref (.getRef repo "refs/heads/master")]
+                            (-> ref
+                                (.getObjectId)
+                                (jgit-utils/commit-id)))]
+        {:commit latest-commit}))))
+
 (defn commit-on-agent
-  [agent-state config context]
-  (commit-repo config)
-  {})
+  [agent-state commit-config latest-commits-cache context]
+  (commit-repo commit-config)
+  (reset! latest-commits-cache (latest-commit-data commit-config)))
 
 (schema/defn ^:always-validate start-periodic-commit-process!
   "Synchronizes the repositories specified in 'config' by sending the agent an
@@ -101,10 +115,11 @@
    config
    context]
   (let [commit-agent (:commit-agent context)
+        latest-commits-cache (:latest-commits-cache context)
         periodic-commit (fn [& args]
                         (-> (apply commit-on-agent args)
                             (assoc :schedule-next-run? true)))
-        send-to-agent #(send-off commit-agent periodic-commit config context)]
+        send-to-agent #(send-off commit-agent periodic-commit config latest-commits-cache context)]
 
     (add-watch commit-agent
                ::schedule-watch
@@ -120,3 +135,17 @@
                          (schedule-fn send-to-agent)))))))
     ; The watch is in place, now send the initial action.
     (send-to-agent)))
+
+
+(schema/defn ^:always-validate latest-commits-handler
+  [latest-commits-cache :- Atom]
+  (->> (comidi/routes
+        (comidi/GET "latest-commits" request
+                    (fn [request]
+                      (log/info "Handling request for latest-commits")
+                      {:status  200
+                       :headers {"Content-Type" "text/plain"}
+                       :body    (:commit @latest-commits-cache)}))
+        (comidi/not-found "Not Found"))
+      (comidi/context "/")
+      (comidi/routes->handler)))

@@ -17,7 +17,7 @@
             [scheduled-jobs-completed? (promise)
              context* (assoc context
                         :sync-agent (common/create-agent
-                                      request-shutdown scheduled-jobs-completed?))]
+                                      request-shutdown scheduled-jobs-completed? "sync-agent"))]
             context*))
   (start [this context]
          (log/info "Starting jgit client service")

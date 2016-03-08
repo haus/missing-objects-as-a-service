@@ -16,12 +16,13 @@
                otherwise that deref will timeout, thereby preventing shutdown of the process
                for the duration of its timeout (20 minutes)."
                [request-shutdown :- IFn
-                scheduled-jobs-completed :- IDeref]
+                scheduled-jobs-completed :- IDeref
+                agent-name]
                (agent
                  {:status :created}
                  :error-mode :fail
                  :error-handler (fn [_ error]
                                   ; disaster!  shut down the entire application.
-                                  (log/error error "Fatal error during client fetch, requesting shutdown.")
+                                  (log/error error (format "Fatal error during %s, requesting shutdown." agent-name))
                                   (request-shutdown)
                                   (deliver scheduled-jobs-completed true))))
