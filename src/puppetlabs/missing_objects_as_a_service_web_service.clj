@@ -2,20 +2,17 @@
   (:import
     (org.eclipse.jgit.http.server GitServlet))
   (:require [clojure.tools.logging :as log]
-            [puppetlabs.comidi :as comidi]
             [puppetlabs.missing-objects-as-a-service-web-core :as core]
+            [puppetlabs.missing-objects-as-a-service-common :as common]
             [puppetlabs.trapperkeeper.core :as trapperkeeper]
-            [puppetlabs.trapperkeeper.services :as tk-services]
-            [me.raynes.fs :as fs]
-            [puppetlabs.missing-objects-as-a-service-common :as common]))
+            [me.raynes.fs :as fs]))
 
 (trapperkeeper/defservice
   jgit-web-service
   [[:ConfigService get-in-config]
    [:WebserverService add-servlet-handler add-ring-handler]
    [:SchedulerService after stop-job]
-   [:ShutdownService request-shutdown]
-   HelloService]
+   [:ShutdownService request-shutdown]]
   (init [this context]
         (log/info "Initializing jgit servlet")
         (let [base-path (get-in-config [:jgit-service :base-dir])

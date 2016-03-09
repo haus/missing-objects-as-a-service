@@ -1,6 +1,5 @@
 (ns puppetlabs.missing-objects-as-a-service-web-core
-  (:require [puppetlabs.missing-objects-as-a-service-service :as hello-svc]
-            [clojure.tools.logging :as log]
+  (:require [clojure.tools.logging :as log]
             [puppetlabs.comidi :as comidi]
             [puppetlabs.kitchensink.core :as ks]
             [me.raynes.fs :as fs]

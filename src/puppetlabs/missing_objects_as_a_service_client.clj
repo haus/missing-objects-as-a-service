@@ -12,10 +12,9 @@
   JGitClient
   [[:ConfigService get-in-config]
    [:ShutdownService request-shutdown]
-   [:SchedulerService after stop-job]
-   [:HelloService]]
+   [:SchedulerService after stop-job]]
   (init [this context]
-        (log/info "Initializing hello service")
+        (log/info "Initializing jgit-client service")
         context
         (let
             [scheduled-jobs-completed? (promise)
