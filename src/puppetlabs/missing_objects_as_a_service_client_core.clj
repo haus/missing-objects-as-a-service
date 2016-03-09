@@ -30,14 +30,14 @@
 (defn fetch-if-necessary!
   [repo-path latest-commit-id]
   (with-open [repo (core/get-repo repo-path)]
-    (log/trace "Validating repo")
+    (log/info "Validating repo")
     (jgit/validate-repo-exists! repo)
-    (log/trace "Repo validated")
+    (log/info "Repo validated")
     (if-not (= latest-commit-id (jgit/master-rev-id repo))
       (try
-        (log/trace "fetching latest commit")
+        (log/info "fetching latest commit")
         (jgit/fetch repo))
-      (log/trace "Nothing to fetch"))))
+      (log/info "Nothing to fetch"))))
 
 (defn apply-updates-to-repo
   [repo-id latest-commit-id data-dir bare?]
@@ -47,18 +47,18 @@
     (try
       (if clone?
         (do
-          (log/tracef "Cloning %s into %s" repo-id repo-path)
+          (log/infof "Cloning %s into %s" repo-id repo-path)
           (jgit/clone! (server-repo-url repo-id) repo-path bare?))
         (do
-          (log/tracef "Fetching commit %s into %s" latest-commit-id repo-path)
+          (log/infof "Fetching commit %s into %s" latest-commit-id repo-path)
           (fetch-if-necessary! repo-path latest-commit-id)))
       (with-open [repo (jgit-utils/get-repository-from-git-dir repo-path)]
-        (log/trace "in the with-open repo")
+        (log/info "in the with-open repo")
         (if latest-commit-id
           (try
-            (log/tracef "Updating ref to %s for repo %s" latest-commit-id repo)
+            (log/infof "Updating ref to %s for repo %s" latest-commit-id repo)
             (jgit/update-ref repo synced-commit-branch-name latest-commit-id)
-            (log/tracef "ref updated to %s for repo %s" latest-commit-id repo)
+            (log/infof "ref updated to %s for repo %s" latest-commit-id repo)
             ; see pe-file-sync.client-core:429
             (catch MissingObjectException e
               (log/error (str
@@ -76,7 +76,7 @@
   (try
     (let [response (slurp (:body (http-client/get
                                    client "http://localhost:8080/latest-commits")))]
-      (log/tracef "Got back this response: %s" response)
+      (log/infof "Got back this response: %s" response)
       response)
     (catch IOException e
       (throw (IllegalStateException. "Unable to get latest-commits from server" e)))))
@@ -93,12 +93,12 @@
     (if latest-commits
       (try
         (apply-updates-to-repo repo-id latest-commits base-dir true)
-        (log/trace "updates applied")
+        (log/info "updates applied")
         (catch PackProtocolException e
           (log/error e))
         (catch TransportException e
           (log/error e)))
-      (log/tracef "No latest commits, got %s from server" latest-commits))
+      (log/infof "No latest commits, got %s from server" latest-commits))
     {:status :successful}))
 
 (schema/defn ^:always-validate start-periodic-sync-process!

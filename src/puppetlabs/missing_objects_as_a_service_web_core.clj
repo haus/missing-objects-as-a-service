@@ -49,11 +49,11 @@
                * If there is not an existing Git repo under data-dir,
                  'git init' will be used to create one."
   [{:keys [repo-id base-dir]}]
-  (log/tracef "Initializing git data dir: %s for repo %s" base-dir repo-id)
+  (log/infof "Initializing git data dir: %s for repo %s" base-dir repo-id)
   (initialize-data-dir! (fs/file base-dir))
   (ks/mkdirs! (live-repo-path base-dir repo-id))
   (let [git-dir (bare-repo-path base-dir repo-id)]
-    (log/tracef "Initializing Git repository at %s" git-dir)
+    (log/infof "Initializing Git repository at %s" git-dir)
     (initialize-bare-repo! git-dir)))
 
 (defn get-repo
@@ -74,7 +74,7 @@
     (let [git-dir (bare-repo-path base-dir repo-id)
           live-dir (live-repo-path base-dir repo-id)
           {:keys [msg committer]} commit-info]
-      (log/tracef "Committing all files in '%s' to repo '%s'" git-dir repo-id)
+      (log/infof "Committing all files in '%s' to repo '%s'" git-dir repo-id)
       (with-open [git-repo (jgit-utils/get-repository git-dir live-dir)]
         (let [git (Git/wrap git-repo)]
           (jgit-utils/add-and-commit git msg committer))))))
@@ -137,7 +137,7 @@
   (->> (comidi/routes
         (comidi/GET "latest-commits" request
                     (fn [request]
-                      (log/trace "Handling request for latest-commits")
+                      (log/info "Handling request for latest-commits")
                       {:status  200
                        :headers {"Content-Type" "text/plain"}
                        :body    (:commit @latest-commits-cache)}))
