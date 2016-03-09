@@ -33,7 +33,7 @@
                config (get-in-config [:jgit-client])
                schedule-fn (partial after poll-interval)]
            (reset! (:http-client-atom context) (sync/create-client {}))
-           (log/info "Starting jgit client service")
+           (log/infof "Starting jgit client service. Fetching every %s milliseconds" poll-interval)
            (core/start-periodic-sync-process! schedule-fn config context)
            context))
   (stop [this context]

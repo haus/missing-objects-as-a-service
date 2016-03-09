@@ -9,7 +9,6 @@
             [puppetlabs.enterprise.jgit-utils :as jgit-utils])
   (:import
     (org.eclipse.jgit.errors MissingObjectException PackProtocolException)
-    (clojure.lang IFn Agent Atom IDeref)
     (java.io IOException)
     (org.eclipse.jgit.api.errors TransportException)))
 
