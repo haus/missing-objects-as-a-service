@@ -23,8 +23,8 @@
               repo-mount (get-in-config [:jgit-service :repo-mount])
               jgit-config (get-in-config [:jgit-service])
               scheduled-jobs-completed? (promise)
-              latest-commits-data (core/latest-commit-data jgit-config)
-              latest-commits-cache (atom latest-commits-data)
+              ;latest-commits-data (core/latest-commit-data jgit-config)
+              latest-commits-cache (atom nil)
               context* (assoc context
                          :scheduled-jobs-state {:shutdown-requested? (atom false)
                                                 :jobs-scheduled? (atom false)

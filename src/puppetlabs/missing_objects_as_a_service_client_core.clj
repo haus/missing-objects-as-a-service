@@ -2,56 +2,101 @@
   (:require [puppetlabs.enterprise.jgit-utils :as jgit]
             [clojure.java.io :as io]
             [clojure.tools.logging :as log]
+            [puppetlabs.http.client.common :as http-client]
+            [puppetlabs.missing-objects-as-a-service-web-core :as core]
+            [puppetlabs.http.client.sync :as sync]
             [schema.core :as schema])
   (:import
     (org.eclipse.jgit.errors MissingObjectException)
-    (clojure.lang IFn Agent Atom IDeref)))
+    (clojure.lang IFn Agent Atom IDeref)
+    (java.io IOException)))
 
 (def synced-commit-branch-name "synced-commit")
 
-(schema/defn ^:always-validate sync-on-agent :- AgentState
-  "Runs the sync process on the agent."
-  [agent-state :- AgentState
-   config :- common/FileSyncConfig
-   context :- ClientContext
-   force-one-time-sync? :- schema/Bool]
-  (try+
-    (let [{:keys [client data-dir]} config
-          {:keys [server-repo-url server-api-url]} client
-          {:keys [client-status event-callbacks get-http-client metrics new-commit-callbacks]} context
-          latest-commits (get-latest-commits-from-server
-                           (get-http-client)
-                           server-api-url
-                           @client-status)
-          check-in-time (common/timestamp)
-          repos (keys latest-commits)
-          _ (log/trace "File sync process running on repos " repos)
-          client-data-dir (path-to-data-dir data-dir)
-          repo-states (process-repos-for-updates
-                        repos
-                        server-repo-url
-                        latest-commits
-                        @new-commit-callbacks
-                        @event-callbacks
-                        metrics
-                        client-data-dir
-                        force-one-time-sync?)
-          full-success? (every? #(not= (:status %) common/repo-status-error)
-                                (vals repo-states))
-          sync-time (common/timestamp)]
+(defn server-repo-url
+  [repo-id]
+  (str "http://localhost:8080/servlet/" repo-id ".git"))
 
-      (update-last-checkin-status! client-status check-in-time latest-commits)
-      ;; TODO: doing this as a separate function from the last-checkin thing above,
-      ;; because I think we're going to want to do the updates inside of the
-      ;; process-repos loop in order to improve our status information.
-      (update-repos-status! client-status repo-states)
-      (if full-success?
-        (update-last-successful-sync-status! client-status sync-time))
-      {:status (if full-success? :successful :partial-success)})
-    (catch errors/file-sync-error? error
-      (errors/log-file-sync-error! error "File Sync failure during sync or fetch phase")
-      {:status :failed
-       :error  error})))
+(defn non-empty-dir?
+  "Returns true if path exists, is a directory, and contains at least 1 file."
+  [path]
+  (-> path
+      io/as-file
+      .listFiles
+      count
+      (> 0)))
+
+(defn fetch-if-necessary!
+  [repo-path latest-commit-id]
+  (with-open [repo ( puppetlabs.missing-objects-as-a-service-web-core/get-repo repo-path)]
+    (log/info "Validating repo")
+    (jgit/validate-repo-exists! repo)
+    (log/info "Repo validated")
+    (if-not (= latest-commit-id (jgit/master-rev-id repo))
+      (try
+        (log/info "fetching latest commit")
+        (jgit/fetch repo))
+      (log/info "Nothing to fetch"))))
+
+(defn apply-updates-to-repo
+  [repo-id latest-commit-id data-dir                       ;bare?
+   ]
+  (let [repo-path (str data-dir "/" repo-id ".git")
+        fetch? (non-empty-dir? repo-path)
+        clone? (not fetch?)]
+    (try
+      (if clone?
+        (do
+          (log/infof "Cloning %s into %s" repo-id repo-path)
+          (jgit/clone! (server-repo-url repo-id) repo-path false) ;bare?
+
+                     )
+        (do
+          (log/infof "Fetching commit %s into %s" latest-commit-id repo-path)
+          (fetch-if-necessary! repo-path latest-commit-id)))
+      (with-open [repo ( core/get-repo repo-path)]
+        (log/info "in the repo")
+        (if latest-commit-id
+          (try
+            (log/info "updating the ref")
+            (jgit/update-ref repo synced-commit-branch-name latest-commit-id)
+            (log/info "ref updated")
+            ; see pe-file-sync.client-core:429
+            (catch MissingObjectException e
+              (log/error (str
+                           "File sync successfully fetched from the "
+                           "server repo, but did not receive commit "
+                           latest-commit-id))
+              (throw e))))))))
+
+(schema/defn ^:always-validate get-latest-commits-from-server
+  "Request information about the latest commits available from the server.
+  The latest commits are requested from the URL in the supplied
+  `server-api-url` argument.  Returns the payload from the response.
+  Throws a 'FileSyncPollError' if an error occurs."
+  [client :- (schema/protocol http-client/HTTPClient)]
+  (try
+    (let [response (slurp (:body (http-client/get
+                                   client "http://localhost:8080/latest-commits")))]
+      (log/infof "Got back this response: %s" response)
+      response)
+    (catch IOException e
+      (throw (IllegalStateException. "Unable to get latest-commits from server" e)))))
+
+(schema/defn ^:always-validate sync-on-agent
+  "Runs the sync process on the agent."
+  [agent-state
+   config
+   context]
+  (let [{:keys [repo-id]} config
+        {:keys [http-client-atom]} context
+        latest-commits (get-latest-commits-from-server @http-client-atom)]
+    (log/info "File sync process running on repo " repo-id)
+    (if latest-commits
+      (apply-updates-to-repo repo-id latest-commits "client")
+      (log/infof "No latest commits, got %s from server" latest-commits))
+    (log/info "updates applied")
+    {:status :successful}))
 
 (schema/defn ^:always-validate start-periodic-sync-process!
   "Synchronizes the repositories specified in 'config' by sending the agent an
@@ -61,16 +106,12 @@
 
   'schedule-fn' is the function that will be invoked after each iteration of the
   sync process to schedule the next iteration."
-  [schedule-fn :- IFn
-   config :- common/FileSyncConfig
-   context :- ClientContext]
+  [schedule-fn config context]
   (let [sync-agent (:sync-agent context)
         periodic-sync (fn [& args]
                         (-> (apply sync-on-agent args)
                             (assoc :schedule-next-run? true)))
-        send-to-agent #(send-off sync-agent periodic-sync config
-                                 context
-                                 false)]
+        send-to-agent #(send-off sync-agent periodic-sync config context)]
     (add-watch sync-agent
                ::schedule-watch
                (fn [key* ref* old-state new-state]
@@ -85,36 +126,3 @@
                          (schedule-fn send-to-agent)))))))
     ; The watch is in place, now send the initial action.
     (send-to-agent)))
-
-(defn non-empty-dir?
-  "Returns true if path exists, is a directory, and contains at least 1 file."
-  [path]
-  (-> path
-      io/as-file
-      .listFiles
-      count
-      (> 0)))
-
-(defn fetch-if-necessary!
-  [repo-id repo-path latest-commit-id target-dir]
-  (with-open [repo (jgit/get-repository-from-git-dir target-dir)]
-    (jgit/validate-repo-exists! repo)
-    (when-not (= latest-commit-id (jgit/master-rev-id repo))
-      (try
-        (jgit/fetch repo)))))
-
-(defn apply-updates-to-repo
-  [repo-id server-repo-url latest-commit-id repo-path bare?]
-  (let [fetch? (non-empty-dir? repo-path)
-        clone? (not fetch?)]
-    (try
-      (if clone?
-        (jgit/clone! server-repo-url repo-path bare?)
-        (fetch-if-necessary! repo-id repo-path latest-commit-id))
-      (with-open [repo ( jgit/get-repository-from-git-dir repo-path)]
-        (if latest-commit-id
-          (let [initial-commit-id (jgit/rev-commit-id repo synced-commit-branch-name)]
-            (try
-              (jgit/update-ref repo synced-commit-branch-name latest-commit-id)
-              ; see pe-file-sync.client-core:429
-              (catch MissingObjectException e))))))))

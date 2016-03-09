@@ -2,35 +2,40 @@
   (:require [clojure.tools.logging :as log]
             [puppetlabs.missing-objects-as-a-service-client-core :as core]
             [puppetlabs.missing-objects-as-a-service-common :as common]
-            [puppetlabs.trapperkeeper.core :as trapperkeeper]))
+            [puppetlabs.trapperkeeper.core :as trapperkeeper]
+            [puppetlabs.http.client.sync :as sync]))
 
 (defprotocol JGitClient)
 
 (trapperkeeper/defservice
   jgit-client
   JGitClient
-  [[:ShutdownService request-shutdown]]
+  [[:ConfigService get-in-config]
+   [:ShutdownService request-shutdown]
+   [:SchedulerService after stop-job]
+   [:HelloService]]
   (init [this context]
         (log/info "Initializing hello service")
         context
-        #_(let
+        (let
             [scheduled-jobs-completed? (promise)
+             http-client-atom (atom nil)
              context* (assoc context
+                        :http-client-atom http-client-atom
+                        :scheduled-jobs-state {:shutdown-requested? (atom false)
+                                               :jobs-scheduled? (atom false)
+                                               :scheduled-jobs-completed? scheduled-jobs-completed?}
                         :sync-agent (common/create-agent
                                       request-shutdown scheduled-jobs-completed? "sync-agent"))]
             context*))
   (start [this context]
-         (log/info "Starting jgit client service")
-         context
-         #_(let [config (get-in-config [:file-sync])
-                 client-config (:client config)
-                 poll-interval (:poll-interval client-config)
-                 schedule-fn (partial after poll-interval)]
-             (when (< 0 poll-interval)
-               (core/start-periodic-sync-process!
-                 schedule-fn config context))
-             (assoc context :config config
-                            :started? true)))
+         (let [poll-interval (get-in-config [:jgit-service :poll-interval])
+               config (get-in-config [:jgit-service])
+               schedule-fn (partial after poll-interval)]
+           (reset! (:http-client-atom context) (sync/create-client {}))
+           (log/info "Starting jgit client service")
+           (core/start-periodic-sync-process! schedule-fn config context)
+           context))
   (stop [this context]
         (log/info "Shutting down jgit client service")
         context))
