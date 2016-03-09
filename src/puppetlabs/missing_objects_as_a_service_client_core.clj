@@ -28,7 +28,7 @@
 
 (defn fetch-if-necessary!
   [repo-path latest-commit-id]
-  (with-open [repo ( puppetlabs.missing-objects-as-a-service-web-core/get-repo repo-path)]
+  (with-open [repo (core/get-repo repo-path)]
     (log/info "Validating repo")
     (jgit/validate-repo-exists! repo)
     (log/info "Repo validated")
@@ -49,18 +49,17 @@
         (do
           (log/infof "Cloning %s into %s" repo-id repo-path)
           (jgit/clone! (server-repo-url repo-id) repo-path false) ;bare?
-
                      )
         (do
           (log/infof "Fetching commit %s into %s" latest-commit-id repo-path)
           (fetch-if-necessary! repo-path latest-commit-id)))
-      (with-open [repo ( core/get-repo repo-path)]
-        (log/info "in the repo")
+      (with-open [repo (core/get-repo repo-path)]
+        (log/info "in the with-open repo")
         (if latest-commit-id
           (try
-            (log/info "updating the ref")
+            (log/infof "Updating ref to %s for repo %s" latest-commit-id repo)
             (jgit/update-ref repo synced-commit-branch-name latest-commit-id)
-            (log/info "ref updated")
+            (log/infof "ref updated to %s for repo %s" latest-commit-id repo)
             ; see pe-file-sync.client-core:429
             (catch MissingObjectException e
               (log/error (str
