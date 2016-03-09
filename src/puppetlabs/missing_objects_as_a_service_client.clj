@@ -29,8 +29,8 @@
                                       request-shutdown scheduled-jobs-completed? "sync-agent"))]
             context*))
   (start [this context]
-         (let [poll-interval (get-in-config [:jgit-service :poll-interval])
-               config (get-in-config [:jgit-service])
+         (let [poll-interval (get-in-config [:jgit-client :poll-interval])
+               config (get-in-config [:jgit-client])
                schedule-fn (partial after poll-interval)]
            (reset! (:http-client-atom context) (sync/create-client {}))
            (log/info "Starting jgit client service")

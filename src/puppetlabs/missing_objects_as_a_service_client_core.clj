@@ -5,11 +5,13 @@
             [puppetlabs.http.client.common :as http-client]
             [puppetlabs.missing-objects-as-a-service-web-core :as core]
             [puppetlabs.http.client.sync :as sync]
-            [schema.core :as schema])
+            [schema.core :as schema]
+            [puppetlabs.enterprise.jgit-utils :as jgit-utils])
   (:import
-    (org.eclipse.jgit.errors MissingObjectException)
+    (org.eclipse.jgit.errors MissingObjectException PackProtocolException)
     (clojure.lang IFn Agent Atom IDeref)
-    (java.io IOException)))
+    (java.io IOException)
+    (org.eclipse.jgit.api.errors TransportException)))
 
 (def synced-commit-branch-name "synced-commit")
 
@@ -39,21 +41,19 @@
       (log/info "Nothing to fetch"))))
 
 (defn apply-updates-to-repo
-  [repo-id latest-commit-id data-dir                       ;bare?
-   ]
-  (let [repo-path (str data-dir "/" repo-id ".git")
+  [repo-id latest-commit-id data-dir bare?]
+  (let [repo-path (core/bare-repo-path data-dir repo-id)
         fetch? (non-empty-dir? repo-path)
         clone? (not fetch?)]
     (try
       (if clone?
         (do
           (log/infof "Cloning %s into %s" repo-id repo-path)
-          (jgit/clone! (server-repo-url repo-id) repo-path false) ;bare?
-                     )
+          (jgit/clone! (server-repo-url repo-id) repo-path bare?))
         (do
           (log/infof "Fetching commit %s into %s" latest-commit-id repo-path)
           (fetch-if-necessary! repo-path latest-commit-id)))
-      (with-open [repo (core/get-repo repo-path)]
+      (with-open [repo (jgit-utils/get-repository-from-git-dir repo-path)]
         (log/info "in the with-open repo")
         (if latest-commit-id
           (try
@@ -87,14 +87,19 @@
   [agent-state
    config
    context]
-  (let [{:keys [repo-id]} config
+  (let [{:keys [repo-id base-dir]} config
         {:keys [http-client-atom]} context
         latest-commits (get-latest-commits-from-server @http-client-atom)]
-    (log/info "File sync process running on repo " repo-id)
+    (log/trace "File sync process running on repo " repo-id)
     (if latest-commits
-      (apply-updates-to-repo repo-id latest-commits "client")
+      (try
+        (apply-updates-to-repo repo-id latest-commits base-dir true)
+        (log/info "updates applied")
+        (catch PackProtocolException e
+          (log/error e))
+        (catch TransportException e
+          (log/error e)))
       (log/infof "No latest commits, got %s from server" latest-commits))
-    (log/info "updates applied")
     {:status :successful}))
 
 (schema/defn ^:always-validate start-periodic-sync-process!

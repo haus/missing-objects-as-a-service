@@ -17,23 +17,12 @@
   {:name schema/Str
    :email schema/Str})
 
-(defn app
-  [hello-service]
-  (comidi/routes
-    (comidi/GET ["/" :caller] [caller]
-      (fn [req]
-        (log/info "Handling request for caller:" caller)
-        {:status  200
-         :headers {"Content-Type" "text/plain"}
-         :body    (hello-svc/hello hello-service caller)}))
-    (comidi/not-found "Not Found")))
-
 (defn initialize-bare-repo!
   "Initialize a bare Git repository in the directory specified by 'path'."
   [path]
   (.. (new InitCommand)
       (setDirectory (io/as-file path))
-      (setBare false)
+      (setBare true)
       (call)))
 
 (defn initialize-data-dir!
@@ -48,6 +37,10 @@
               repo-id :- schema/Str]
              (fs/file data-dir (str repo-id ".git")))
 
+(defn live-repo-path
+  [data-dir repo-id]
+  (fs/file data-dir repo-id))
+
 (defn initialize-repos!
              "Initialize the repositories managed by this service.  For each repository ...
                * There is a directory under data-dir (specified in config) which is actual Git
@@ -58,6 +51,7 @@
   [{:keys [repo-id base-dir]}]
   (log/infof "Initializing git data dir: %s for repo %s" base-dir repo-id)
   (initialize-data-dir! (fs/file base-dir))
+  (ks/mkdirs! (live-repo-path base-dir repo-id))
   (let [git-dir (bare-repo-path base-dir repo-id)]
     (log/infof "Initializing Git repository at %s" git-dir)
     (initialize-bare-repo! git-dir)))
@@ -78,9 +72,10 @@
     base-dir :- schema/Str
     commit-info :- {:msg schema/Str :committer PersonIdent}]
     (let [git-dir (bare-repo-path base-dir repo-id)
+          live-dir (live-repo-path base-dir repo-id)
           {:keys [msg committer]} commit-info]
       (log/infof "Committing all files in '%s' to repo '%s'" git-dir repo-id)
-      (with-open [git-repo (get-repo git-dir)]
+      (with-open [git-repo (jgit-utils/get-repository git-dir live-dir)]
         (let [git (Git/wrap git-repo)]
           (jgit-utils/add-and-commit git msg committer))))))
 
@@ -91,7 +86,7 @@
    been made on the repository, the return value will be {:commit nil}."
   [{:keys [repo-id base-dir]}]
   (let [git-dir (bare-repo-path base-dir repo-id)]
-    (with-open [repo (get-repo git-dir)]
+    (with-open [repo (jgit-utils/get-repository-from-git-dir git-dir)]
       (let [latest-commit (when-let [ref (.getRef repo "refs/heads/master")]
                             (-> ref
                                 (.getObjectId)

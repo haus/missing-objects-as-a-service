@@ -34,7 +34,7 @@
                                          request-shutdown scheduled-jobs-completed? "commit-agent"))]
           (fs/mkdir base-path)
           (core/initialize-repos! jgit-config)
-          (fs/touch (str (core/bare-repo-path base-path repo-id) "/" "fooo"))
+          (fs/touch (str (core/live-repo-path base-path repo-id) "/" "fooo"))
           (core/commit-repo jgit-config)
           (add-servlet-handler (GitServlet.) repo-mount
                                {:servlet-init-params {"base-path" base-path "export-all" "1"}})
