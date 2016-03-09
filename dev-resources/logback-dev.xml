@@ -5,12 +5,20 @@
         </encoder>
     </appender>
 
+    <appender name="F1" class="ch.qos.logback.core.FileAppender">
+        <file>./missing-objects-as-a-service.log</file>
+        <append>true</append>
+        <encoder>
+            <pattern>%d %-5p [%c{2}] %m%n</pattern>
+        </encoder>
+    </appender>
+
     <logger name="org.eclipse.jetty.server" level="warn"/>
     <logger name="org.eclipse.jetty.util.log" level="warn"/>
     <logger name="org.eclipse.jgit.internal.storage.file.RefDirectory" level="debug"/>
     <logger name="org.eclipse.jgit.internal.storage.file.ObjectDirectory" level="debug"/>
 
     <root level="info">
-        <appender-ref ref="STDOUT" />
+        <appender-ref ref="F1" />
     </root>
 </configuration>
