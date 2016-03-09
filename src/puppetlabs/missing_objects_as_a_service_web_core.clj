@@ -9,7 +9,7 @@
   (:import (org.eclipse.jgit.api InitCommand Git)
            (java.io File)
            (org.eclipse.jgit.lib PersonIdent)
-           (clojure.lang IFn IDeref Atom)))
+           (clojure.lang IFn Atom)))
 
 (def Identity
   "Schema for an author/committer."

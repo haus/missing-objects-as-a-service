@@ -4,7 +4,6 @@
             [clojure.tools.logging :as log]
             [puppetlabs.http.client.common :as http-client]
             [puppetlabs.missing-objects-as-a-service-web-core :as core]
-            [puppetlabs.http.client.sync :as sync]
             [schema.core :as schema]
             [puppetlabs.enterprise.jgit-utils :as jgit-utils])
   (:import
