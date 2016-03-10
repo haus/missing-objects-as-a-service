@@ -20,5 +20,5 @@ checkouts
 /acceptance/hosts.cfg
 base-path
 foo
-client
-server
+client*
+server*
