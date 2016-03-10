@@ -82,13 +82,11 @@
 
 (schema/defn ^:always-validate sync-on-agent
   "Runs the sync process on the agent."
-  [agent-state
-   config
-   context]
+  [config context]
   (let [{:keys [repo-id base-dir]} config
         {:keys [http-client-atom]} context
         latest-commits (get-latest-commits-from-server @http-client-atom)]
-    (log/trace "File sync process running on repo " repo-id)
+    (log/info "File sync process running on repo " repo-id)
     (if latest-commits
       (try
         (apply-updates-to-repo repo-id latest-commits base-dir true)
@@ -100,31 +98,10 @@
       (log/infof "No latest commits, got %s from server" latest-commits))
     {:status :successful}))
 
-(schema/defn ^:always-validate start-periodic-sync-process!
-  "Synchronizes the repositories specified in 'config' by sending the agent an
-  action.  It is important that this function only be called once, during service
-  startup.  (Although, note that one-off sync runs can be triggered by sending
-  the agent a 'sync-on-agent' action.)
-
-  'schedule-fn' is the function that will be invoked after each iteration of the
-  sync process to schedule the next iteration."
-  [schedule-fn config context]
-  (let [sync-agent (:sync-agent context)
-        periodic-sync (fn [& args]
-                        (-> (apply sync-on-agent args)
-                            (assoc :schedule-next-run? true)))
-        send-to-agent #(send-off sync-agent periodic-sync config context)]
-    (add-watch sync-agent
-               ::schedule-watch
-               (fn [key* ref* old-state new-state]
-                 (when (:schedule-next-run? new-state)
-                   (let [{:keys [shutdown-requested? scheduled-jobs-completed? jobs-scheduled?]}
-                         (:scheduled-jobs-state context)]
-                     (if @shutdown-requested?
-                       (deliver scheduled-jobs-completed? true)
-                       (do
-                         (log/trace "Scheduling the next iteration of the sync process.")
-                         (reset! jobs-scheduled? true)
-                         (schedule-fn send-to-agent)))))))
-    ; The watch is in place, now send the initial action.
-    (send-to-agent)))
+(defn start-periodic-sync-process!
+  [{:keys [poll-interval] :as config}
+   {:keys [shutdown-requested?] :as context}]
+  (log/infof "Starting sync process with interval of %s milliseconds. Also shutdown-requested? is %s" poll-interval shutdown-requested?)
+  (while (not (realized? shutdown-requested?))
+    (sync-on-agent config context)
+    (Thread/sleep poll-interval)))
