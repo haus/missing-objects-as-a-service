@@ -4,8 +4,7 @@
             [clojure.tools.logging :as log]
             [puppetlabs.http.client.common :as http-client]
             [puppetlabs.missing-objects-as-a-service-web-core :as core]
-            [schema.core :as schema]
-            [puppetlabs.enterprise.jgit-utils :as jgit-utils])
+            [schema.core :as schema])
   (:import
     (org.eclipse.jgit.errors MissingObjectException PackProtocolException)
     (java.io IOException)
@@ -51,7 +50,7 @@
         (do
           (log/infof "Fetching commit %s into %s" latest-commit-id repo-path)
           (fetch-if-necessary! repo-path latest-commit-id)))
-      (with-open [repo (jgit-utils/get-repository-from-git-dir repo-path)]
+      (with-open [repo (jgit/get-repository-from-git-dir repo-path)]
         (log/info "in the with-open repo")
         (if latest-commit-id
           (try
