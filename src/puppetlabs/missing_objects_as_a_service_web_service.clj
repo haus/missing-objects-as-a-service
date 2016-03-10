@@ -2,9 +2,11 @@
   (:import
     (org.eclipse.jgit.http.server GitServlet))
   (:require [clojure.tools.logging :as log]
-            [puppetlabs.missing-objects-as-a-service-web-core :as core]
+            [puppetlabs.missing-objects-as-a-service-web-core :as web-core]
             [puppetlabs.trapperkeeper.core :as trapperkeeper]
-            [me.raynes.fs :as fs]))
+            [me.raynes.fs :as fs]
+            [puppetlabs.http.client.sync :as sync]
+            [puppetlabs.missing-objects-as-a-service-client-core :as client-core]))
 
 (trapperkeeper/defservice
   jgit-web-service
@@ -15,32 +17,40 @@
         (let [base-path (get-in-config [:jgit-service :base-dir])
               repo-id (get-in-config [:jgit-service :repo-id])
               repo-mount (get-in-config [:jgit-service :repo-mount])
-              jgit-config (get-in-config [:jgit-service])
+              server-config (get-in-config [:jgit-service])
               latest-commits-cache (atom nil)
               context* (assoc context
                          :latest-commits-cache latest-commits-cache
-                         :shutdown-requested? (promise))]
+                         :shutdown-requested? (promise)
+                         :http-client-atom (atom nil))]
           (fs/mkdir base-path)
-          (core/initialize-repos! jgit-config)
-          (fs/touch (str (core/live-repo-path base-path repo-id) "/" "fooo"))
-          (core/commit-repo jgit-config)
+          (web-core/initialize-repos! server-config)
+          (fs/touch (str (web-core/live-repo-path base-path repo-id) "/" "fooo"))
+          (web-core/commit-repo server-config)
           (add-servlet-handler (GitServlet.) repo-mount
                                {:servlet-init-params {"base-path" base-path "export-all" "1"}})
-          (add-ring-handler (core/latest-commits-handler latest-commits-cache) "")
+          (add-ring-handler (web-core/latest-commits-handler latest-commits-cache) "")
           context*))
 
   (start [this context]
          (let [host (get-in-config [:webserver :host])
                port (get-in-config [:webserver :port])
-               jgit-config (get-in-config [:jgit-service])
+               server-config (get-in-config [:jgit-service])
                repo-id (get-in-config [:jgit-service :repo-id])
                repo-mount (get-in-config [:jgit-service :repo-mount])
-               commit-interval (get-in-config [:jgit-service :commit-interval] 5000)]
+               commit-interval (get-in-config [:jgit-service :commit-interval] 5000)
+               poll-interval (get-in-config [:jgit-client :poll-interval])
+               client-config (get-in-config [:jgit-client])]
            (log/infof "JGit servlet started; `git clone http://%s:%s%s/%s.git` to check it out!"
                       host port repo-mount repo-id)
 
+           (reset! (:http-client-atom context) (sync/create-client {}))
+
+           (log/infof "Starting jgit client service. Fetching every %s milliseconds" poll-interval)
+           (future (client-core/start-periodic-sync-process! client-config context))
+
            (log/infof "Commit agent starting...commiting every %s milliseconds" commit-interval)
-           (future (core/start-periodic-commit-process! jgit-config context))
+           (future (web-core/start-periodic-commit-process! server-config context))
 
            context))
 
