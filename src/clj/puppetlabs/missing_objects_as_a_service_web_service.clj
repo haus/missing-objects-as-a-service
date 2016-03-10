@@ -46,11 +46,11 @@
 
            (reset! (:http-client-atom context) (sync/create-client {}))
 
-           (log/infof "Starting jgit client service. Fetching every %s milliseconds" poll-interval)
-           (future (client-core/start-periodic-sync-process! client-config context))
-
            (log/infof "Commit agent starting...commiting every %s milliseconds" commit-interval)
            (future (web-core/start-periodic-commit-process! server-config context))
+
+           (log/infof "Starting jgit client service. Fetching every %s milliseconds" poll-interval)
+           (future (client-core/start-periodic-sync-process! client-config context))
 
            context))
 
