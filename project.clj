@@ -34,6 +34,9 @@
 
   :pedantic? :abort
 
+  :source-paths ["src/clj"]
+  :java-source-paths ["src/java"]
+
   :profiles {:dev {:source-paths ["dev"]
                    :dependencies [[puppetlabs/trapperkeeper ~tk-version :classifier "test" :scope "test"]
                                   [puppetlabs/kitchensink ~ks-version :classifier "test" :scope "test"]
