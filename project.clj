@@ -30,6 +30,8 @@
                  [org.eclipse.jgit/org.eclipse.jgit.http.server ~jgit-version]
                  [org.eclipse.jgit/org.eclipse.jgit.http.apache ~jgit-version]
                  [prismatic/schema "1.0.5"]
+
+                 ;; File sync is needed for jgit-utils
                  [puppetlabs/pe-file-sync "0.1.7"]]
 
   :pedantic? :abort
