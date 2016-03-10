@@ -40,17 +40,23 @@
                repo-mount (get-in-config [:jgit-service :repo-mount])
                commit-interval (get-in-config [:jgit-service :commit-interval] 5000)
                poll-interval (get-in-config [:jgit-client :poll-interval])
-               client-config (get-in-config [:jgit-client])]
+               client-config (get-in-config [:jgit-client])
+               num-clients (get-in-config [:jgit-client :num-clients])]
            (log/infof "JGit servlet started; `git clone http://%s:%s%s/%s.git` to check it out!"
                       host port repo-mount repo-id)
 
            (reset! (:http-client-atom context) (sync/create-client {}))
 
+           ;; Wait for startup?
+
            (log/infof "Commit agent starting...commiting every %s milliseconds" commit-interval)
            (future (web-core/start-periodic-commit-process! server-config context))
 
-           (log/infof "Starting jgit client service. Fetching every %s milliseconds" poll-interval)
-           (future (client-core/start-periodic-sync-process! client-config context))
+           ;; Wait for startup?
+
+           (doseq [i (range 1 (inc num-clients))]
+             (log/infof "Starting jgit client service #%s. Fetching every %s milliseconds" i poll-interval)
+             (future (client-core/start-periodic-sync-process! i client-config context)))
 
            context))
 

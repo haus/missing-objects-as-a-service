@@ -81,31 +81,34 @@
 
 (schema/defn ^:always-validate sync-on-agent
   "Runs the sync process on the agent."
-  [config context]
+  [client-number config context]
   (let [{:keys [repo-id base-dir]} config
         {:keys [http-client-atom shutdown-requested?]} context
         latest-commits (get-latest-commits-from-server @http-client-atom)]
     (log/trace "File sync process running on repo " repo-id)
     (if latest-commits
       (try
-        (apply-updates-to-repo repo-id latest-commits base-dir true)
-        (log/info "updates applied")
+        (apply-updates-to-repo repo-id latest-commits (str base-dir client-number) true)
+        (log/trace "updates applied")
         (catch MissingObjectException e
           (log/error e)
           (deliver shutdown-requested? true))
         (catch PackProtocolException e
           (log/error e)
-          (deliver shutdown-requested? true))
+          ;(deliver shutdown-requested? true)
+          )
         (catch TransportException e
           (log/error e)
-          (deliver shutdown-requested? true)))
-      (log/infof "No latest commits, got %s from server" latest-commits))
+          ;(deliver shutdown-requested? true)
+          ))
+      (log/tracef "No latest commits, got %s from server" latest-commits))
     {:status :successful}))
 
 (defn start-periodic-sync-process!
-  [{:keys [poll-interval] :as config}
+  [client-number
+   {:keys [poll-interval] :as config}
    {:keys [shutdown-requested?] :as context}]
-  (log/infof "Starting sync process with interval of %s milliseconds. Also shutdown-requested? is %s" poll-interval shutdown-requested?)
+  (log/infof "Starting sync process number %s" client-number)
   (while (not (realized? shutdown-requested?))
-    (sync-on-agent config context)
+    (sync-on-agent client-number config context)
     (Thread/sleep poll-interval)))
