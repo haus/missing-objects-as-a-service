@@ -93,42 +93,16 @@
         {:commit latest-commit}))))
 
 (defn commit-on-agent
-  [agent-state commit-config latest-commits-cache context]
+  [commit-config latest-commits-cache]
   (commit-repo commit-config)
   (reset! latest-commits-cache (latest-commit-data commit-config)))
 
 (schema/defn ^:always-validate start-periodic-commit-process!
-  "Synchronizes the repositories specified in 'config' by sending the agent an
-  action.  It is important that this function only be called once, during service
-  startup.  (Although, note that one-off sync runs can be triggered by sending
-  the agent a 'sync-on-agent' action.)
-
-  'schedule-fn' is the function that will be invoked after each iteration of the
-  sync process to schedule the next iteration."
-  [schedule-fn :- IFn
-   config
-   context]
-  (let [commit-agent (:commit-agent context)
-        latest-commits-cache (:latest-commits-cache context)
-        periodic-commit (fn [& args]
-                        (-> (apply commit-on-agent args)
-                            (assoc :schedule-next-run? true)))
-        send-to-agent #(send-off commit-agent periodic-commit config latest-commits-cache context)]
-
-    (add-watch commit-agent
-               ::schedule-watch
-               (fn [key* ref* old-state new-state]
-                 (when (:schedule-next-run? new-state)
-                   (let [{:keys [shutdown-requested? scheduled-jobs-completed? jobs-scheduled?]}
-                         (:scheduled-jobs-state context)]
-                     (if @shutdown-requested?
-                       (deliver scheduled-jobs-completed? true)
-                       (do
-                         (log/trace "Scheduling the next iteration of the commit process.")
-                         (reset! jobs-scheduled? true)
-                         (schedule-fn send-to-agent)))))))
-    ; The watch is in place, now send the initial action.
-    (send-to-agent)))
+  [{:keys [commit-interval] :as config}
+   {:keys [shutdown-requested? latest-commits-cache]}]
+  (while (not (realized? shutdown-requested?))
+    (commit-on-agent config latest-commits-cache)
+    (Thread/sleep commit-interval)))
 
 
 (schema/defn ^:always-validate latest-commits-handler
