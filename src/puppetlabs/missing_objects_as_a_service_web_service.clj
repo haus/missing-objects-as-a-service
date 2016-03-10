@@ -56,5 +56,5 @@
 
   (stop [this context]
         (log/info "Shutting down jgit client service")
-        (deliver @(:shutdown-requested? context) true)
+        (deliver (:shutdown-requested? context) true)
         context))
