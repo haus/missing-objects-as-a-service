@@ -28,14 +28,14 @@
 (defn fetch-if-necessary!
   [repo-path latest-commit-id]
   (with-open [repo (core/get-repo repo-path)]
-    (log/info "Validating repo")
+    (log/trace "Validating repo")
     (jgit/validate-repo-exists! repo)
-    (log/info "Repo validated")
+    (log/trace "Repo validated")
     (if-not (= latest-commit-id (jgit/master-rev-id repo))
       (try
-        (log/info "fetching latest commit")
+        (log/trace "fetching latest commit")
         (jgit/fetch repo))
-      (log/info "Nothing to fetch"))))
+      (log/trace "Nothing to fetch"))))
 
 (defn apply-updates-to-repo
   [repo-id latest-commit-id data-dir bare?]
@@ -45,18 +45,18 @@
     (try
       (if clone?
         (do
-          (log/infof "Cloning %s into %s" repo-id repo-path)
+          (log/tracef "Cloning %s into %s" repo-id repo-path)
           (jgit/clone! (server-repo-url repo-id) repo-path bare?))
         (do
-          (log/infof "Fetching commit %s into %s" latest-commit-id repo-path)
+          (log/tracef "Fetching commit %s into %s" latest-commit-id repo-path)
           (fetch-if-necessary! repo-path latest-commit-id)))
       (with-open [repo (jgit/get-repository-from-git-dir repo-path)]
-        (log/info "in the with-open repo")
+        (log/trace "in the with-open repo")
         (if latest-commit-id
           (try
-            (log/infof "Updating ref to %s for repo %s" latest-commit-id repo)
+            (log/tracef "Updating ref to %s for repo %s" latest-commit-id repo)
             (jgit/update-ref repo synced-commit-branch-name latest-commit-id)
-            (log/infof "ref updated to %s for repo %s" latest-commit-id repo)
+            (log/tracef "ref updated to %s for repo %s" latest-commit-id repo)
             ; see pe-file-sync.client-core:429
             (catch MissingObjectException e
               (log/error (str
@@ -74,7 +74,7 @@
   (try
     (let [response (slurp (:body (http-client/get
                                    client "http://localhost:8080/latest-commits")))]
-      (log/infof "Got back this response: %s" response)
+      (log/tracef "Got back this response: %s" response)
       response)
     (catch IOException e
       (throw (IllegalStateException. "Unable to get latest-commits from server" e)))))
@@ -85,7 +85,7 @@
   (let [{:keys [repo-id base-dir]} config
         {:keys [http-client-atom shutdown-requested?]} context
         latest-commits (get-latest-commits-from-server @http-client-atom)]
-    (log/info "File sync process running on repo " repo-id)
+    (log/trace "File sync process running on repo " repo-id)
     (if latest-commits
       (try
         (apply-updates-to-repo repo-id latest-commits base-dir true)

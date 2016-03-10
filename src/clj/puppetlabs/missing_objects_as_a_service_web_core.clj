@@ -73,7 +73,7 @@
     (let [git-dir (bare-repo-path base-dir repo-id)
           live-dir (live-repo-path base-dir repo-id)
           {:keys [msg committer]} commit-info]
-      (log/infof "Committing all files in '%s' to repo '%s'" git-dir repo-id)
+      (log/tracef "Committing all files in '%s' to repo '%s'" git-dir repo-id)
       (with-open [git-repo (jgit-utils/get-repository git-dir live-dir)]
         (let [git (Git/wrap git-repo)]
           (jgit-utils/add-and-commit git msg committer))))))
@@ -110,7 +110,7 @@
   (->> (comidi/routes
         (comidi/GET "latest-commits" request
                     (fn [request]
-                      (log/info "Handling request for latest-commits")
+                      (log/trace "Handling request for latest-commits")
                       {:status  200
                        :headers {"Content-Type" "text/plain"}
                        :body    (:commit @latest-commits-cache)}))
