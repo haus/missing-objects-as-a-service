@@ -83,17 +83,22 @@
   "Runs the sync process on the agent."
   [config context]
   (let [{:keys [repo-id base-dir]} config
-        {:keys [http-client-atom]} context
+        {:keys [http-client-atom shutdown-requested?]} context
         latest-commits (get-latest-commits-from-server @http-client-atom)]
     (log/info "File sync process running on repo " repo-id)
     (if latest-commits
       (try
         (apply-updates-to-repo repo-id latest-commits base-dir true)
         (log/info "updates applied")
+        (catch MissingObjectException e
+          (log/error e)
+          (deliver shutdown-requested? true))
         (catch PackProtocolException e
-          (log/error e))
+          (log/error e)
+          (deliver shutdown-requested? true))
         (catch TransportException e
-          (log/error e)))
+          (log/error e)
+          (deliver shutdown-requested? true)))
       (log/infof "No latest commits, got %s from server" latest-commits))
     {:status :successful}))
 
