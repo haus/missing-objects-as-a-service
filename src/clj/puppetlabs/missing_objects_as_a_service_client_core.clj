@@ -95,12 +95,10 @@
           (deliver shutdown-requested? true))
         (catch PackProtocolException e
           (log/error e)
-          ;(deliver shutdown-requested? true)
-          )
+          (deliver shutdown-requested? true))
         (catch TransportException e
           (log/error e)
-          ;(deliver shutdown-requested? true)
-          ))
+          (deliver shutdown-requested? true)))
       (log/tracef "No latest commits, got %s from server" latest-commits))
     {:status :successful}))
 
