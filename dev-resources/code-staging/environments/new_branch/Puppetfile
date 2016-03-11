@@ -1,0 +1,6 @@
+forge "https://forge.puppetlabs.com/"
+
+mod 'stahnma/epel', :latest
+mod 'puppetlabs/apt', :latest
+mod 'puppetlabs/stdlib', :latest
+mod 'puppetlabs/ntp', :latest
