@@ -25,7 +25,7 @@
                          :http-client-atom (atom nil))]
           (fs/mkdir base-path)
           (web-core/initialize-repos! server-config)
-          (fs/touch (str (web-core/live-repo-path base-path repo-id) "/" "fooo"))
+          (fs/copy-dir "./dev-resources/code-staging" (web-core/live-repo-path base-path repo-id))
           (web-core/commit-repo server-config)
           (add-servlet-handler (GitServlet.) repo-mount
                                {:servlet-init-params {"base-path" base-path "export-all" "1"}})
